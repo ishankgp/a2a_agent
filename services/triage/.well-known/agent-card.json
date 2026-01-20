@@ -1,0 +1,14 @@
+{
+  "name": "Triage Agent",
+  "description": "Routes incoming requests to research or presentation agents.",
+  "url": "http://localhost:8001",
+  "authentication": {"type": "bearer"},
+  "capabilities": {"streaming": true},
+  "skills": [
+    {
+      "name": "classify_and_route",
+      "description": "Classify user intent and route to the correct agent.",
+      "examples": ["Create a patient-friendly presentation on diabetes management."]
+    }
+  ]
+}

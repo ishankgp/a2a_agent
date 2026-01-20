@@ -202,3 +202,29 @@ For each agent service, add `/.well-known/agent-card.json` with:
 - Do not store PHI.
 - Use de-identified sample text.
 - Display banner: “For educational purposes only.”
+
+---
+
+## Local Run (Scaffold)
+
+This repo now includes scaffolded FastAPI services for triage, research, review, and presentation.
+
+### 1) Install dependencies
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### 2) Run services (separate terminals)
+```bash
+uvicorn services.triage.app:app --port 8001 --reload
+uvicorn services.research.app:app --port 8002 --reload
+uvicorn services.review.app:app --port 8003 --reload
+uvicorn services.presentation.app:app --port 8004 --reload
+```
+
+### 3) Run orchestrator
+```bash
+python client/orchestrator.py
+```

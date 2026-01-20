@@ -1,0 +1,19 @@
+{
+  "name": "Medical Research Agent",
+  "description": "Summarizes medical research with structured outputs.",
+  "url": "http://localhost:8002",
+  "authentication": {"type": "bearer"},
+  "capabilities": {"streaming": true},
+  "skills": [
+    {
+      "name": "summarize_medical_research",
+      "description": "Provide patient-friendly summaries with citations.",
+      "examples": ["Summarize diabetes management for adults in the US."]
+    },
+    {
+      "name": "extract_key_points",
+      "description": "Extract key points and risk factors.",
+      "examples": ["List key points and risk factors for type 2 diabetes."]
+    }
+  ]
+}

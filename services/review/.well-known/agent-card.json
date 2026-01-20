@@ -1,0 +1,14 @@
+{
+  "name": "Review Agent",
+  "description": "Reviews medical summaries for clarity and compliance notes.",
+  "url": "http://localhost:8003",
+  "authentication": {"type": "bearer"},
+  "capabilities": {"streaming": true},
+  "skills": [
+    {
+      "name": "review_medical_summary",
+      "description": "Refine summaries for patient-friendly tone.",
+      "examples": ["Review summary for clarity and compliance warnings."]
+    }
+  ]
+}
