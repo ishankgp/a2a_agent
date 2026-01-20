@@ -1,0 +1,14 @@
+{
+  "name": "Presentation Agent",
+  "description": "Generates Gamma presentations from outlines.",
+  "url": "http://localhost:8004",
+  "authentication": {"type": "bearer"},
+  "capabilities": {"streaming": true},
+  "skills": [
+    {
+      "name": "create_presentation",
+      "description": "Create a Gamma deck and return a shareable URL.",
+      "examples": ["Create slides on diabetes management with 6 slides."]
+    }
+  ]
+}
