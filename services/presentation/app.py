@@ -34,7 +34,7 @@ def message(request: MessageRequest) -> MessageResponse:
     TASKS[task_id] = ResubscribeResponse(
         task_id=task_id,
         state=TaskState.completed,
-        last_event=TaskStatusUpdateEvent(task_id=task_id, state=TaskState.completed).dict(),
+        last_event=TaskStatusUpdateEvent(task_id=task_id, state=TaskState.completed).model_dump(),
         artifacts=[{"gammaUrl": gamma_url}],
     )
     response_message = Message(role="assistant", content=f"Presentation ready: {gamma_url}")
@@ -44,9 +44,9 @@ def message(request: MessageRequest) -> MessageResponse:
 @app.get("/message/stream")
 def stream_message(task_id: str):
     events = [
-        TaskStatusUpdateEvent(task_id=task_id, state=TaskState.working, detail="Generating slides").dict(),
-        TaskArtifactUpdateEvent(task_id=task_id, artifact={"progress": "50%"}).dict(),
-        TaskStatusUpdateEvent(task_id=task_id, state=TaskState.completed).dict(),
+        TaskStatusUpdateEvent(task_id=task_id, state=TaskState.working, detail="Generating slides").model_dump(),
+        TaskArtifactUpdateEvent(task_id=task_id, artifact={"progress": "50%"}).model_dump(),
+        TaskStatusUpdateEvent(task_id=task_id, state=TaskState.completed).model_dump(),
     ]
     return EventSourceResponse(simple_event_stream(events, delay_s=1.0))
 
