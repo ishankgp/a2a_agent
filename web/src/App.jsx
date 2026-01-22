@@ -12,10 +12,10 @@ import {
 
 // API Configuration
 const API_URLS = {
-  triage: "http://localhost:8001",
-  research: "http://localhost:8002",
-  review: "http://localhost:8003",
-  presentation: "http://localhost:8004"
+  triage: "http://127.0.0.1:8001",
+  research: "http://127.0.0.1:8002",
+  review: "http://127.0.0.1:8003",
+  presentation: "http://127.0.0.1:8004"
 };
 
 export default function App() {
@@ -50,38 +50,38 @@ export default function App() {
   const subscribeToStream = (serviceUrl, taskId, stageName) => {
     return new Promise((resolve) => {
       const eventSource = new EventSource(`${serviceUrl}/message/stream?task_id=${taskId}`);
-      
+
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
         if (data.event === "task-status") {
-           // Mapping backend state to UI status
-           let status = "Working";
-           if (data.state === "completed") status = "Completed";
-           if (data.state === "failed") status = "Failed";
-           
-           updateStageStatus(stageName, status);
-           if (data.detail) addLog(`${stageName}: ${status}`, data.detail);
-           
-           if (data.state === "completed" || data.state === "failed") {
-             eventSource.close();
-             resolve(data.state);
-           }
+          // Mapping backend state to UI status
+          let status = "Working";
+          if (data.state === "completed") status = "Completed";
+          if (data.state === "failed") status = "Failed";
+
+          updateStageStatus(stageName, status);
+          if (data.detail) addLog(`${stageName}: ${status}`, data.detail);
+
+          if (data.state === "completed" || data.state === "failed") {
+            eventSource.close();
+            resolve(data.state);
+          }
         } else if (data.event === "task-artifact") {
-           // Handle artifacts
-           if (data.artifact.gammaUrl) {
-             setArtifacts((prev) => [...prev, { title: "Gamma Deck", detail: "Presentation Generated", url: data.artifact.gammaUrl }]);
-           } else if (data.artifact.summary) {
-             setArtifacts((prev) => [...prev, { title: "Research Summary", detail: "Summary generated", data: data.artifact }]);
-           } else if (data.artifact.slideOutline) {
-             setArtifacts((prev) => [...prev, { title: "Slide Outline", detail: "Fallback generation", data: data.artifact }]);
-           } else if (data.artifact.revisedSummary) {
-             setArtifacts((prev) => [...prev, { title: "Review Feedback", detail: "Content reviewed", data: data.artifact }]);
-           } else if (data.artifact.progress) {
-             addLog(`${stageName} Progress`, data.artifact.progress);
-           }
+          // Handle artifacts
+          if (data.artifact.gammaUrl) {
+            setArtifacts((prev) => [...prev, { title: "Gamma Deck", detail: "Presentation Generated", url: data.artifact.gammaUrl }]);
+          } else if (data.artifact.summary) {
+            setArtifacts((prev) => [...prev, { title: "Research Summary", detail: "Summary generated", data: data.artifact }]);
+          } else if (data.artifact.slideOutline) {
+            setArtifacts((prev) => [...prev, { title: "Slide Outline", detail: "Fallback generation", data: data.artifact }]);
+          } else if (data.artifact.revisedSummary) {
+            setArtifacts((prev) => [...prev, { title: "Review Feedback", detail: "Content reviewed", data: data.artifact }]);
+          } else if (data.artifact.progress) {
+            addLog(`${stageName} Progress`, data.artifact.progress);
+          }
         }
       };
-      
+
       eventSource.onerror = () => {
         eventSource.close();
         resolve("failed");
@@ -91,7 +91,7 @@ export default function App() {
 
   const runPipeline = async () => {
     if (!prompt) return;
-    
+
     setIsRunning(true);
     setLogs([]);
     setArtifacts([]);
@@ -106,75 +106,75 @@ export default function App() {
       // 1. Triage
       updateStageStatus("triage", "Working");
       addLog("Triage Started", "Analyzing user request...");
-      
+
       const triageRes = await fetch(`${API_URLS.triage}/message`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: { role: "user", content: prompt } })
       });
       const triageData = await triageRes.json();
-      
+
       setTaskId(triageData.task_id);
       setContextId(triageData.context_id);
-      
+
       // Subscribe to Triage Stream (short lived)
       await subscribeToStream(API_URLS.triage, triageData.task_id, "triage");
-      
+
       const route = triageData.message.content.includes("medical_research") ? "medical_research" : "presentation";
-      
+
       if (route === "medical_research") {
-          // 2. Research
-          updateStageStatus("research", "Working");
-          const researchRes = await fetch(`${API_URLS.research}/message`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ 
-                  context_id: triageData.context_id,
-                  message: { role: "user", content: prompt } 
-              })
-          });
-          const researchData = await researchRes.json();
-          await subscribeToStream(API_URLS.research, researchData.task_id, "research");
-          
-          // 3. Review
-          updateStageStatus("review", "Working");
-          const reviewRes = await fetch(`${API_URLS.review}/message`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ 
-                  context_id: triageData.context_id,
-                  message: { role: "user", content: researchData.message.content } 
-              })
-          });
-          const reviewData = await reviewRes.json();
-          await subscribeToStream(API_URLS.review, reviewData.task_id, "review");
-          
-          // 4. Presentation
-          updateStageStatus("presentation", "Working");
-          const presentRes = await fetch(`${API_URLS.presentation}/message`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ 
-                  context_id: triageData.context_id,
-                  message: { role: "user", content: reviewData.message.content } 
-              })
-          });
-          const presentData = await presentRes.json();
-          await subscribeToStream(API_URLS.presentation, presentData.task_id, "presentation");
-          
+        // 2. Research
+        updateStageStatus("research", "Working");
+        const researchRes = await fetch(`${API_URLS.research}/message`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            context_id: triageData.context_id,
+            message: { role: "user", content: prompt }
+          })
+        });
+        const researchData = await researchRes.json();
+        await subscribeToStream(API_URLS.research, researchData.task_id, "research");
+
+        // 3. Review
+        updateStageStatus("review", "Working");
+        const reviewRes = await fetch(`${API_URLS.review}/message`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            context_id: triageData.context_id,
+            message: { role: "user", content: researchData.message.content }
+          })
+        });
+        const reviewData = await reviewRes.json();
+        await subscribeToStream(API_URLS.review, reviewData.task_id, "review");
+
+        // 4. Presentation
+        updateStageStatus("presentation", "Working");
+        const presentRes = await fetch(`${API_URLS.presentation}/message`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            context_id: triageData.context_id,
+            message: { role: "user", content: reviewData.message.content }
+          })
+        });
+        const presentData = await presentRes.json();
+        await subscribeToStream(API_URLS.presentation, presentData.task_id, "presentation");
+
       } else {
-          // Direct to Presentation
-          updateStageStatus("presentation", "Working");
-          const presentRes = await fetch(`${API_URLS.presentation}/message`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ 
-                  context_id: triageData.context_id,
-                  message: { role: "user", content: prompt } 
-              })
-          });
-          const presentData = await presentRes.json();
-          await subscribeToStream(API_URLS.presentation, presentData.task_id, "presentation");
+        // Direct to Presentation
+        updateStageStatus("presentation", "Working");
+        const presentRes = await fetch(`${API_URLS.presentation}/message`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            context_id: triageData.context_id,
+            message: { role: "user", content: prompt }
+          })
+        });
+        const presentData = await presentRes.json();
+        await subscribeToStream(API_URLS.presentation, presentData.task_id, "presentation");
       }
 
     } catch (e) {
@@ -198,11 +198,11 @@ export default function App() {
             </h1>
           </div>
           <div className="flex items-center gap-3">
-             <Button 
-                size="sm" 
-                onClick={() => window.location.reload()}
-                variant="outline"
-             >
+            <Button
+              size="sm"
+              onClick={() => window.location.reload()}
+              variant="outline"
+            >
               Reset
             </Button>
           </div>
@@ -219,7 +219,7 @@ export default function App() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <textarea 
+              <textarea
                 className="w-full rounded-md border border-border bg-background p-3 text-sm"
                 rows={3}
                 placeholder="e.g. Create a patient-friendly presentation on diabetes management..."
@@ -229,12 +229,12 @@ export default function App() {
               />
             </CardContent>
             <CardFooter className="flex justify-between items-center">
-               <div className="flex gap-2">
-                 {contextId && <Badge variant="info">Ctx: {contextId.slice(0,6)}</Badge>}
-               </div>
-               <Button onClick={runPipeline} disabled={isRunning || !prompt}>
-                 {isRunning ? "Running Pipeline..." : "Start New Run"}
-               </Button>
+              <div className="flex gap-2">
+                {contextId && <Badge variant="info">Ctx: {contextId.slice(0, 6)}</Badge>}
+              </div>
+              <Button onClick={runPipeline} disabled={isRunning || !prompt}>
+                {isRunning ? "Running Pipeline..." : "Start New Run"}
+              </Button>
             </CardFooter>
           </Card>
 
@@ -267,22 +267,22 @@ export default function App() {
             </CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
               {["triage", "research", "review", "presentation"].map((stage) => {
-                 let variant = "default";
-                 if (pipelineState[stage] === "Working") variant = "info";
-                 if (pipelineState[stage] === "Completed") variant = "success";
-                 if (pipelineState[stage] === "Failed") variant = "destructive";
-                 
-                 return (
-                    <div
-                      key={stage}
-                      className="rounded-2xl border border-border bg-muted/30 p-4"
-                    >
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-semibold text-text-primary capitalize">{stage}</p>
-                        <Badge variant={variant}>{pipelineState[stage]}</Badge>
-                      </div>
+                let variant = "default";
+                if (pipelineState[stage] === "Working") variant = "info";
+                if (pipelineState[stage] === "Completed") variant = "success";
+                if (pipelineState[stage] === "Failed") variant = "destructive";
+
+                return (
+                  <div
+                    key={stage}
+                    className="rounded-2xl border border-border bg-muted/30 p-4"
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold text-text-primary capitalize">{stage}</p>
+                      <Badge variant={variant}>{pipelineState[stage]}</Badge>
                     </div>
-                 );
+                  </div>
+                );
               })}
             </CardContent>
           </Card>
@@ -295,21 +295,21 @@ export default function App() {
               <CardDescription>Real-time agent status.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-               {["triage", "research", "review", "presentation"].map((stage) => {
-                 let variant = "default";
-                 if (pipelineState[stage] === "Working") variant = "info";
-                 if (pipelineState[stage] === "Completed") variant = "success";
-                 if (pipelineState[stage] === "Failed") variant = "destructive";
-                 
-                 return (
+              {["triage", "research", "review", "presentation"].map((stage) => {
+                let variant = "default";
+                if (pipelineState[stage] === "Working") variant = "info";
+                if (pipelineState[stage] === "Completed") variant = "success";
+                if (pipelineState[stage] === "Failed") variant = "destructive";
+
+                return (
                   <div key={stage} className="flex items-center justify-between rounded-2xl border border-border bg-muted/30 p-4">
                     <div>
                       <p className="text-sm font-semibold capitalize">{stage}</p>
                     </div>
                     <Badge variant={variant}>{pipelineState[stage]}</Badge>
                   </div>
-                 );
-               })}
+                );
+              })}
             </CardContent>
           </Card>
 

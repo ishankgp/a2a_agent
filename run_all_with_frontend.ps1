@@ -31,19 +31,28 @@ $null = Register-ObjectEvent -InputObject ([System.Console]) -EventName "CancelK
 # Start backend services
 Write-Host "Starting backend services..." -ForegroundColor Green
 
-$triage = Start-Process python -ArgumentList "-m", "uvicorn", "services.triage.app:app", "--port", "8001", "--reload" -PassThru -WindowStyle Hidden
+# Determine Python path
+if (Test-Path ".venv\Scripts\python.exe") {
+    $pythonPath = Resolve-Path ".venv\Scripts\python.exe"
+} else {
+    $pythonPath = "python"
+}
+
+Write-Host "Using Python: $pythonPath" -ForegroundColor Cyan
+
+$triage = Start-Process $pythonPath -ArgumentList "-m", "uvicorn", "services.triage.app:app", "--host", "0.0.0.0", "--port", "8001", "--reload" -PassThru
 $processes += $triage
 Write-Host "  Triage service on port 8001" -ForegroundColor Cyan
 
-$research = Start-Process python -ArgumentList "-m", "uvicorn", "services.research.app:app", "--port", "8002", "--reload" -PassThru -WindowStyle Hidden
+$research = Start-Process $pythonPath -ArgumentList "-m", "uvicorn", "services.research.app:app", "--host", "0.0.0.0", "--port", "8002", "--reload" -PassThru
 $processes += $research
 Write-Host "  Research service on port 8002" -ForegroundColor Cyan
 
-$review = Start-Process python -ArgumentList "-m", "uvicorn", "services.review.app:app", "--port", "8003", "--reload" -PassThru -WindowStyle Hidden
+$review = Start-Process $pythonPath -ArgumentList "-m", "uvicorn", "services.review.app:app", "--host", "0.0.0.0", "--port", "8003", "--reload" -PassThru
 $processes += $review
 Write-Host "  Review service on port 8003" -ForegroundColor Cyan
 
-$presentation = Start-Process python -ArgumentList "-m", "uvicorn", "services.presentation.app:app", "--port", "8004", "--reload" -PassThru -WindowStyle Hidden
+$presentation = Start-Process $pythonPath -ArgumentList "-m", "uvicorn", "services.presentation.app:app", "--host", "0.0.0.0", "--port", "8004", "--reload" -PassThru
 $processes += $presentation
 Write-Host "  Presentation service on port 8004" -ForegroundColor Cyan
 
