@@ -21,12 +21,32 @@ from services.common.schemas import (
 )
 from services.common.sse import simple_event_stream
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(title="A2A Presentation Agent")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 TASKS: Dict[str, ResubscribeResponse] = {}
 
 
 import os
+from openai import OpenAI
+from dotenv import load_dotenv
+
+load_dotenv()
+
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+import os
+import time
+import httpx
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -40,12 +60,49 @@ def message(request: MessageRequest) -> MessageResponse:
     context_id = request.context_id or str(uuid.uuid4())
     
     gamma_key = os.getenv("GAMMA_API_KEY")
-    slides_url = "https://gamma.app/placeholder"
+    slides_url = "https://gamma.app/error"
+    artifacts = []
     
     if gamma_key:
-        # Placeholder for real Gamma implementation if key existed
-        # For now, we just pass through
-        pass
+        try:
+            # 1. Start Generation
+            headers = {"X-API-KEY": gamma_key, "Content-Type": "application/json"}
+            payload = {
+                "inputText": request.message.content,
+                "textMode": "generate",
+                "format": "presentation",
+                "numCards": 7
+            }
+            
+            with httpx.Client(timeout=30.0) as client:
+                resp = client.post("https://public-api.gamma.app/v1.0/generations", json=payload, headers=headers)
+                resp.raise_for_status()
+                job_id = resp.json()["id"]
+                
+                # 2. Poll for Completion
+                status = "queued"
+                while status in ["queued", "processing"]:
+                    time.sleep(2.0)
+                    job_resp = client.get(f"https://public-api.gamma.app/v1.0/generations/{job_id}", headers=headers)
+                    if job_resp.status_code == 200:
+                        job_data = job_resp.json()
+                        status = job_data["status"]
+                        if status == "completed":
+                            slides_url = job_data["url"]
+                            artifacts = [{"gammaUrl": slides_url}]
+                            break
+                        elif status == "failed":
+                            slides_url = "https://gamma.app/failed"
+                            artifacts = [{"error": "Gamma generation failed"}]
+                            break
+                    else:
+                        break
+
+        except Exception as e:
+            print(f"Gamma Error: {e}")
+            slides_url = "https://gamma.app/error"
+            artifacts = [{"error": str(e)}]
+
     else:
         # Fallback: Generate Slide Outline via OpenAI
         try:
@@ -65,14 +122,18 @@ def message(request: MessageRequest) -> MessageResponse:
             except:
                 slides_preview = {"raw": content}
                 
+            slides_url = "https://gamma.app/placeholder-outline"
+            artifacts = [{"gammaUrl": slides_url, "slideOutline": slides_preview}]
+                
         except Exception as e:
             slides_preview = {"error": str(e)}
+            artifacts = [{"error": str(e)}]
 
     TASKS[task_id] = ResubscribeResponse(
         task_id=task_id,
         state=TaskState.completed,
         last_event=TaskStatusUpdateEvent(task_id=task_id, state=TaskState.completed).model_dump(),
-        artifacts=[{"gammaUrl": slides_url, "slideOutline": slides_preview}],
+        artifacts=artifacts,
     )
     response_message = Message(role="assistant", content=f"Presentation ready: {slides_url}")
     return MessageResponse(context_id=context_id, task_id=task_id, message=response_message)

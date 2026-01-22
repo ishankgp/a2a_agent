@@ -21,7 +21,17 @@ from services.common.schemas import (
 )
 from services.common.sse import simple_event_stream
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(title="A2A Review Agent")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 TASKS: Dict[str, ResubscribeResponse] = {}
 
