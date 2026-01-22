@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -20,14 +20,14 @@ class Message(BaseModel):
 
 
 class TaskStatusUpdateEvent(BaseModel):
-    event: str = Field(default="task-status", const=True)
+    event: Literal["task-status"] = "task-status"
     task_id: str
     state: TaskState
     detail: Optional[str] = None
 
 
 class TaskArtifactUpdateEvent(BaseModel):
-    event: str = Field(default="task-artifact", const=True)
+    event: Literal["task-artifact"] = "task-artifact"
     task_id: str
     artifact: Dict[str, Any]
 

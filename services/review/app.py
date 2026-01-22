@@ -34,7 +34,7 @@ def message(request: MessageRequest) -> MessageResponse:
     TASKS[task_id] = ResubscribeResponse(
         task_id=task_id,
         state=TaskState.completed,
-        last_event=TaskStatusUpdateEvent(task_id=task_id, state=TaskState.completed).dict(),
+        last_event=TaskStatusUpdateEvent(task_id=task_id, state=TaskState.completed).model_dump(),
         artifacts=[{"revisedSummary": revised, "patientFriendlyScore": 4}],
     )
     response_message = Message(role="assistant", content=revised)
@@ -44,9 +44,9 @@ def message(request: MessageRequest) -> MessageResponse:
 @app.get("/message/stream")
 def stream_message(task_id: str):
     events = [
-        TaskStatusUpdateEvent(task_id=task_id, state=TaskState.working, detail="Reviewing summary").dict(),
-        TaskArtifactUpdateEvent(task_id=task_id, artifact={"note": "Checking tone"}).dict(),
-        TaskStatusUpdateEvent(task_id=task_id, state=TaskState.completed).dict(),
+        TaskStatusUpdateEvent(task_id=task_id, state=TaskState.working, detail="Reviewing summary").model_dump(),
+        TaskArtifactUpdateEvent(task_id=task_id, artifact={"note": "Checking tone"}).model_dump(),
+        TaskStatusUpdateEvent(task_id=task_id, state=TaskState.completed).model_dump(),
     ]
     return EventSourceResponse(simple_event_stream(events, delay_s=0.6))
 
