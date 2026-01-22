@@ -24,6 +24,13 @@ Status: FIXED by user update to .env
 
 **Location**: `d:\Github clones\a2a_agent\.env` → `GEMINI_API_KEY`
 
+## Secondary Issue: "Stuck" UI / No Streaming
+**Root Cause**: The frontend (`App.jsx`) acted sequentially:
+1. `await fetch('/message')` (Blocked for 30s waiting for Agent)
+2. `subscribeToStream()` (Too late, agent already finished)
+
+**Fix**: Refactored `App.jsx` to generate `task_id` client-side and trigger `fetch` and `subscribeToStream` in **parallel**.
+
 ---
 
 ## Final Fixes Applied
@@ -31,7 +38,10 @@ Status: FIXED by user update to .env
 1. **Architecture**: Moved to Single-Port (8000) to fix CORS.
 2. **Stability**: Added mocks (optional usage) and fixed fallback variable scope bug.
 3. **Connectivity**: Verified frontend talks to unified backend.
-4. **Auth**: Updated Gemini API Key.
+4. **Auth**: Updated Gemini API Key (User verified).
+5. **Model Switch**: Migrated all agents (Research, Review) to use **OpenAI (GPT-4o)** due to recurring Gemini API issues.
+6. **UX**: Refactored Frontend to Parallel Streaming & Backend to True State Polling.
+7. **Interaction**: Added Detail Modal for artifacts to enable content inspection.
 
 ---
 

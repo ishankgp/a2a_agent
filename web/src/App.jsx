@@ -33,6 +33,26 @@ export default function App() {
   const [taskId, setTaskId] = useState(null);
   const [contextId, setContextId] = useState(null);
 
+  // Debug Helper
+  const [debugMode, setDebugMode] = useState(false);
+  const [rawLogs, setRawLogs] = useState([]);
+  const [selectedArtifact, setSelectedArtifact] = useState(null);
+
+  const addDebugLog = (msg) => {
+    console.log(`[DEBUG] ${msg}`);
+    const time = new Date().toLocaleTimeString();
+    setRawLogs(prev => [`[${time}] ${msg}`, ...prev]);
+  };
+
+  // Safe UUID generator
+  const generateUUID = () => {
+    // Simple fallback implementation
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  };
+
   const addLog = (title, description) => {
     setLogs((prev) => [
       {
@@ -105,13 +125,29 @@ export default function App() {
 
     // Helper to fetch artifacts from an agent
     const fetchArtifacts = async (serviceUrl, taskId, stageName) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
       try {
+        addDebugLog(`[FetchArtifacts] Starting for ${stageName} (Task: ${taskId})`);
+
         const res = await fetch(`${serviceUrl}/tasks/resubscribe`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ task_id: taskId })
+          body: JSON.stringify({ task_id: taskId }),
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
+
+        addDebugLog(`[FetchArtifacts] Response status: ${res.status}`);
+
+        if (!res.ok) {
+          throw new Error(`Server returned ${res.status}`);
+        }
+
         const data = await res.json();
+        addDebugLog(`[FetchArtifacts] Data received: ${JSON.stringify(data.artifacts?.length || 0)} artifacts`);
+
         if (data.artifacts?.length) {
           data.artifacts.forEach(artifact => {
             if (artifact.gammaUrl) {
@@ -129,8 +165,11 @@ export default function App() {
         }
         return data;
       } catch (e) {
+        clearTimeout(timeoutId);
         console.error(`Failed to fetch artifacts for ${stageName}:`, e);
-        return null;
+        addDebugLog(`[FetchArtifacts] FAILED for ${stageName}: ${e.message}`);
+        // Return null but don't crash pipeline
+        return { artifacts: [] };
       }
     };
 
@@ -141,50 +180,76 @@ export default function App() {
 
       let triageData;
       try {
+        // GENERATE ID CLIENT SIDE
+        const triageTaskId = crypto.randomUUID();
+
+        // Start streaming concurrently
+        const streamPromise = subscribeToStream(API_URLS.triage, triageTaskId, "triage");
+
         const triageRes = await fetch(`${API_URLS.triage}/message`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: { role: "user", content: prompt } })
+          body: JSON.stringify({
+            task_id: triageTaskId,
+            message: { role: "user", content: prompt }
+          })
         });
+
         if (!triageRes.ok) throw new Error(`Triage service error: ${triageRes.status}`);
         triageData = await triageRes.json();
+
+        // Wait for stream to finish (optional, but good for UI sync)
+        await streamPromise;
+
       } catch (e) {
         updateStageStatus("triage", "Failed");
         addLog("Triage Failed", e.message);
-        throw e; // Cannot continue without triage
+        throw e;
       }
 
       setTaskId(triageData.task_id);
       setContextId(triageData.context_id);
 
-      // Subscribe to Triage Stream (short lived)
-      await subscribeToStream(API_URLS.triage, triageData.task_id, "triage");
-
-      // Fetch actual route from triage artifacts (not naive string matching)
+      // Fetch actual route from triage artifacts
       const triageArtifacts = await fetchArtifacts(API_URLS.triage, triageData.task_id, "triage");
       const route = triageArtifacts?.artifacts?.[0]?.route ?? "medical_research";
       addLog("Routing Complete", `Selected route: ${route}`);
 
       if (route === "medical_research") {
         // 2. Research
+        addDebugLog("Starting Research Stage");
         updateStageStatus("research", "Working");
         let researchData;
         try {
+          const researchTaskId = generateUUID();
+          addDebugLog(`Generated Research TaskID: ${researchTaskId}`);
+
+          const streamPromise = subscribeToStream(API_URLS.research, researchTaskId, "research");
+          addDebugLog("Subscribed to Research Stream");
+
+          addDebugLog("Sending Research Request...");
           const researchRes = await fetch(`${API_URLS.research}/message`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              task_id: researchTaskId,
               context_id: triageData.context_id,
               message: { role: "user", content: prompt }
             })
           });
+
+          addDebugLog(`Research Request Status: ${researchRes.status}`);
           if (!researchRes.ok) throw new Error(`Research service error: ${researchRes.status}`);
           researchData = await researchRes.json();
-          await subscribeToStream(API_URLS.research, researchData.task_id, "research");
+          addDebugLog("Research Response Parsed");
+
+          await streamPromise;
+          addDebugLog("Research Stream Completed");
           await fetchArtifacts(API_URLS.research, researchData.task_id, "research");
         } catch (e) {
           updateStageStatus("research", "Failed");
           addLog("Research Failed", e.message);
+          addDebugLog(`Research Exception: ${e.message}`);
           throw e;
         }
 
@@ -192,17 +257,24 @@ export default function App() {
         updateStageStatus("review", "Working");
         let reviewData;
         try {
+          const reviewTaskId = crypto.randomUUID();
+
+          const streamPromise = subscribeToStream(API_URLS.review, reviewTaskId, "review");
+
           const reviewRes = await fetch(`${API_URLS.review}/message`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              task_id: reviewTaskId,
               context_id: triageData.context_id,
               message: { role: "user", content: researchData.message.content }
             })
           });
+
           if (!reviewRes.ok) throw new Error(`Review service error: ${reviewRes.status}`);
           reviewData = await reviewRes.json();
-          await subscribeToStream(API_URLS.review, reviewData.task_id, "review");
+
+          await streamPromise;
           await fetchArtifacts(API_URLS.review, reviewData.task_id, "review");
         } catch (e) {
           updateStageStatus("review", "Failed");
@@ -213,17 +285,24 @@ export default function App() {
         // 4. Presentation
         updateStageStatus("presentation", "Working");
         try {
+          const presentTaskId = crypto.randomUUID();
+
+          const streamPromise = subscribeToStream(API_URLS.presentation, presentTaskId, "presentation");
+
           const presentRes = await fetch(`${API_URLS.presentation}/message`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              task_id: presentTaskId,
               context_id: triageData.context_id,
               message: { role: "user", content: reviewData.message.content }
             })
           });
+
           if (!presentRes.ok) throw new Error(`Presentation service error: ${presentRes.status}`);
           const presentData = await presentRes.json();
-          await subscribeToStream(API_URLS.presentation, presentData.task_id, "presentation");
+
+          await streamPromise;
           await fetchArtifacts(API_URLS.presentation, presentData.task_id, "presentation");
         } catch (e) {
           updateStageStatus("presentation", "Failed");
@@ -237,17 +316,25 @@ export default function App() {
         updateStageStatus("review", "Skipped");
         updateStageStatus("presentation", "Working");
         try {
+          const presentTaskId = crypto.randomUUID();
+
+          const streamPromise = subscribeToStream(API_URLS.presentation, presentTaskId, "presentation");
+
           const presentRes = await fetch(`${API_URLS.presentation}/message`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              task_id: presentTaskId,
               context_id: triageData.context_id,
               message: { role: "user", content: prompt }
             })
           });
+
           if (!presentRes.ok) throw new Error(`Presentation service error: ${presentRes.status}`);
           const presentData = await presentRes.json();
-          await subscribeToStream(API_URLS.presentation, presentData.task_id, "presentation");
+
+          await streamPromise;
+          await fetchArtifacts(API_URLS.presentation, presentData.task_id, "presentation");
           await fetchArtifacts(API_URLS.presentation, presentData.task_id, "presentation");
         } catch (e) {
           updateStageStatus("presentation", "Failed");
@@ -311,11 +398,29 @@ export default function App() {
               <div className="flex gap-2">
                 {contextId && <Badge variant="info">Ctx: {contextId.slice(0, 6)}</Badge>}
               </div>
-              <Button onClick={runPipeline} disabled={isRunning || !prompt}>
-                {isRunning ? "Running Pipeline..." : "Start New Run"}
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setDebugMode(!debugMode)}>
+                  {debugMode ? "Hide Debug" : "Show Debug"}
+                </Button>
+                <Button onClick={runPipeline} disabled={isRunning || !prompt}>
+                  {isRunning ? "Running Pipeline..." : "Start New Run"}
+                </Button>
+              </div>
             </CardFooter>
           </Card>
+
+          {/* Debug View */}
+          {debugMode && (
+            <Card className="border-red-900 bg-black">
+              <CardHeader><CardTitle className="text-red-500 text-sm">System Debug Log</CardTitle></CardHeader>
+              <CardContent>
+                <div className="h-48 overflow-y-auto font-mono text-xs text-green-400 p-2 bg-slate-900 rounded">
+                  {rawLogs.map((l, i) => <div key={i}>{l}</div>)}
+                  {rawLogs.length === 0 && <div>No debug logs yet...</div>}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>
@@ -393,31 +498,59 @@ export default function App() {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Artifacts</CardTitle>
-              <CardDescription>Latest outputs ready for review.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {artifacts.length === 0 && <p className="text-sm text-text-muted">No artifacts yet.</p>}
-              {artifacts.map((artifact, i) => (
-                <div
-                  key={i}
-                  className="rounded-2xl border border-border bg-muted/30 p-4"
-                >
-                  <p className="text-sm font-semibold text-text-primary">
-                    {artifact.title}
-                  </p>
-                  <p className="text-sm text-text-muted">{artifact.detail}</p>
-                  {artifact.url && (
-                    <a href={artifact.url} target="_blank" rel="noreferrer" className="text-xs text-blue-500 underline mt-1 block">
-                      Open Presentation
-                    </a>
-                  )}
+            <CardHeader><CardTitle>Generated Artifacts</CardTitle><CardDescription>Click to view details</CardDescription></CardHeader>
+            <CardContent>
+              {artifacts.length === 0 ? <div className="text-sm text-gray-500">No artifacts generated yet.</div> : (
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {artifacts.map((a, i) => (
+                    <div key={i} className="p-3 bg-slate-800 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-colors" onClick={() => setSelectedArtifact(a)}>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-semibold text-blue-400">{a.title}</div>
+                          <div className="text-xs text-gray-400">{a.detail}</div>
+                        </div>
+                        {a.url && <Badge variant="outline" className="text-xs">Link</Badge>}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </CardContent>
           </Card>
         </section>
+
+        {/* Artifact Detail Modal */}
+        {selectedArtifact && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+            <Card className="w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col bg-slate-900 border-slate-700">
+              <CardHeader className="flex flex-row justify-between items-center border-b border-slate-800 pb-4">
+                <div>
+                  <CardTitle className="text-xl text-blue-400">{selectedArtifact.title}</CardTitle>
+                  <CardDescription>{selectedArtifact.detail}</CardDescription>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => setSelectedArtifact(null)}>✕</Button>
+              </CardHeader>
+              <CardContent className="overflow-y-auto p-6 space-y-4">
+                {selectedArtifact.url && (
+                  <div className="p-4 bg-blue-900/20 border border-blue-900 rounded mb-4">
+                    <p className="text-sm text-blue-300 mb-2">Presentation Link:</p>
+                    <a href={selectedArtifact.url} target="_blank" rel="noreferrer" className="text-blue-400 underline break-all">{selectedArtifact.url}</a>
+                  </div>
+                )}
+
+                <div className="bg-slate-950 p-4 rounded border border-slate-800 overflow-x-auto">
+                  <pre className="text-xs font-mono text-green-400 whitespace-pre-wrap">
+                    {typeof selectedArtifact.data === 'string' ? selectedArtifact.data : JSON.stringify(selectedArtifact.data || {}, null, 2)}
+                  </pre>
+                </div>
+              </CardContent>
+              <CardFooter className="border-t border-slate-800 pt-4 flex justify-end">
+                <Button onClick={() => setSelectedArtifact(null)}>Close</Button>
+              </CardFooter>
+            </Card>
+          </div>
+        )}
+
       </main>
     </div>
   );

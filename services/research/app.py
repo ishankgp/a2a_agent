@@ -1,11 +1,12 @@
 from __future__ import annotations
-
+import asyncio
+import time
 import uuid
-from typing import Dict
+import json
+import os
+from typing import Dict, List
 
 from fastapi import FastAPI
-import json
-
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
@@ -23,6 +24,12 @@ from services.common.sse import simple_event_stream
 
 from fastapi.middleware.cors import CORSMiddleware
 
+from openai import OpenAI
+from dotenv import load_dotenv
+
+load_dotenv()
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 app = FastAPI(title="A2A Medical Research Agent")
 
 app.add_middleware(
@@ -33,56 +40,67 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-TASKS: Dict[str, ResubscribeResponse] = {}
-
-
-import os
-import google.generativeai as genai
-from dotenv import load_dotenv
-
-load_dotenv()
-
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+# State storage for streaming updates
+# mapping: task_id -> {"state": TaskState, "detail": str, "timestamp": float}
+TASK_UPDATES: Dict[str, dict] = {}
 
 @app.post("/message", response_model=MessageResponse)
 def message(request: MessageRequest) -> MessageResponse:
+    print(f"Research Agent received message: {request.message.content}")
     task_id = request.task_id or str(uuid.uuid4())
     context_id = request.context_id or str(uuid.uuid4())
     
-    # Real Gemini Research
+    # helper to update state
+    def update_state(state: TaskState, detail: str):
+        TASK_UPDATES[task_id] = {
+            "state": state,
+            "detail": detail,
+            "timestamp": time.time()
+        }
+    
+    update_state(TaskState.working, "Initializing medical research agent...")
+    time.sleep(1) # Visual pacing
+    
+    # Real OpenAI Research
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        prompt = f"""
-        You are a medical research assistant. Research the following query and provide a structured summary.
-        Query: {request.message.content}
+        update_state(TaskState.working, "Consulting OpenAI GPT-4o...")
         
+        system_prompt = """
+        You are a medical research assistant. Research the following query and provide a structured summary.
         Output valid JSON with the following keys:
         - summary: A detailed medical summary (approx 100 words).
         - keyPoints: A list of 3-5 key takeaways.
         - riskFactors: A list of risk factors.
         - audienceTone: The detected tone (e.g., 'clinical', 'patient-friendly').
-        
-        Do not use markdown formatting for the JSON. Just raw JSON.
         """
-        response = model.generate_content(prompt)
-        content = response.text.replace("```json", "").replace("```", "").strip()
         
-        # Best effort parsing, though we pass string to orchestrator usually
-        try:
-            data = json.loads(content)
-            summary_text = data.get("summary", "No summary provided.")
-            artifacts = [data]
-        except json.JSONDecodeError:
-            summary_text = content
-            artifacts = [{"raw": content}]
+        response = openai_client.chat.completions.create(
+            model=os.getenv("OPENAI_MODEL", "gpt-4o"),
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": request.message.content}
+            ],
+            temperature=0.3
+        )
+        content = response.choices[0].message.content
+        
+        update_state(TaskState.working, "Parsing research findings...")
+        
+        data = json.loads(content)
+        summary_text = data.get("summary", "No summary provided.")
+        artifacts = [data]
+
+
 
     except Exception as e:
         import traceback
-        # Log deep details
         with open("research_debug.log", "w") as f:
             f.write(traceback.format_exc())
             
-        print(f"Error calling Gemini: {e}")
+        print(f"Error calling OpenAI: {e}")
+        
+        update_state(TaskState.failed, f"Error: {str(e)}")
         
         # FALLBACK: Return mock data so demo continues
         summary_text = f"**[MOCK] Research Fallback**\n\nThe AI research service is unavailable (Error: {str(e)}). Displaying a placeholder research summary regarding '{request.message.content}'.\n\nRecent advancements include CAR-T cell therapy, mRNA vaccines, and CRISPR gene editing."
@@ -97,6 +115,8 @@ def message(request: MessageRequest) -> MessageResponse:
         # FIX: Define content for the return statement below
         content = summary_text
 
+    update_state(TaskState.completed, "Research complete.")
+
     TASKS[task_id] = ResubscribeResponse(
         task_id=task_id,
         state=TaskState.completed,
@@ -110,12 +130,27 @@ def message(request: MessageRequest) -> MessageResponse:
 
 
 @app.get("/message/stream")
-def stream_message(task_id: str):
-    events = [
-        TaskStatusUpdateEvent(task_id=task_id, state=TaskState.working, detail="Consulting medical database...").model_dump(),
-        TaskStatusUpdateEvent(task_id=task_id, state=TaskState.completed).model_dump(),
-    ]
-    return EventSourceResponse(simple_event_stream(events, delay_s=0.5))
+async def stream_message(task_id: str):
+    async def event_generator():
+        last_timestamp = 0
+        # Poll for 60 seconds max
+        for _ in range(120): 
+            if task_id in TASK_UPDATES:
+                update = TASK_UPDATES[task_id]
+                if update["timestamp"] > last_timestamp:
+                    last_timestamp = update["timestamp"]
+                    yield TaskStatusUpdateEvent(
+                        task_id=task_id, 
+                        state=update["state"], 
+                        detail=update["detail"]
+                    ).model_dump_json()
+                    
+                    if update["state"] in [TaskState.completed, TaskState.failed]:
+                        break
+            
+            await asyncio.sleep(0.5)
+
+    return EventSourceResponse(event_generator())
 
 
 @app.post("/tasks/resubscribe", response_model=ResubscribeResponse)

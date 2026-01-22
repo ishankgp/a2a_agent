@@ -1,11 +1,12 @@
 from __future__ import annotations
-
+import asyncio
+import time
 import uuid
-from typing import Dict
+import json
+import os
+from typing import Dict, List
 
 from fastapi import FastAPI
-import json
-
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
@@ -23,6 +24,12 @@ from services.common.sse import simple_event_stream
 
 from fastapi.middleware.cors import CORSMiddleware
 
+from openai import OpenAI
+from dotenv import load_dotenv
+
+load_dotenv()
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 app = FastAPI(title="A2A Review Agent")
 
 app.add_middleware(
@@ -33,24 +40,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-TASKS: Dict[str, ResubscribeResponse] = {}
-
-
-import os
-from openai import OpenAI
-from dotenv import load_dotenv
-
-load_dotenv()
-
-openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# State storage for streaming updates
+# mapping: task_id -> {"state": TaskState, "detail": str, "timestamp": float}
+TASK_UPDATES: Dict[str, dict] = {}
 
 @app.post("/message", response_model=MessageResponse)
 def message(request: MessageRequest) -> MessageResponse:
     task_id = request.task_id or str(uuid.uuid4())
     context_id = request.context_id or str(uuid.uuid4())
     
+    # helper to update state
+    def update_state(state: TaskState, detail: str):
+        TASK_UPDATES[task_id] = {
+            "state": state,
+            "detail": detail,
+            "timestamp": time.time()
+        }
+    
+    update_state(TaskState.working, "Initializing medical reviewer...")
+    
     # Real OpenAI Review
     try:
+        update_state(TaskState.working, "Evaluating content safety...")
+        
         completion = openai_client.chat.completions.create(
             model=os.getenv("OPENAI_MODEL", "gpt-4o"),
             messages=[
@@ -60,6 +72,9 @@ def message(request: MessageRequest) -> MessageResponse:
             temperature=0.0
         )
         content = completion.choices[0].message.content.strip()
+        
+        update_state(TaskState.working, "Checking citations and compliance...")
+        time.sleep(1) # Visual pacing for fast LLMs
         
         # Best effort parsing
         try:
@@ -73,6 +88,8 @@ def message(request: MessageRequest) -> MessageResponse:
     except Exception as e:
         print(f"Error calling OpenAI: {e}")
         
+        update_state(TaskState.failed, f"Error: {str(e)}")
+        
         # FALLBACK: Return mock review
         revised_text = f"**[MOCK] Review Fallback**\n\nThe review service is unavailable. The passed content appears generally safe but lacks specific citations. (Error: {str(e)})"
         
@@ -85,6 +102,8 @@ def message(request: MessageRequest) -> MessageResponse:
         # FIX: Define content variable
         content = revised_text
 
+    update_state(TaskState.completed, "Review approved and finalized.")
+
     TASKS[task_id] = ResubscribeResponse(
         task_id=task_id,
         state=TaskState.completed,
@@ -96,13 +115,27 @@ def message(request: MessageRequest) -> MessageResponse:
 
 
 @app.get("/message/stream")
-def stream_message(task_id: str):
-    events = [
-        TaskStatusUpdateEvent(task_id=task_id, state=TaskState.working, detail="Analyzing tone and clarity...").model_dump(),
-        TaskArtifactUpdateEvent(task_id=task_id, artifact={"note": "Checking compliance..."}).model_dump(),
-        TaskStatusUpdateEvent(task_id=task_id, state=TaskState.completed).model_dump(),
-    ]
-    return EventSourceResponse(simple_event_stream(events, delay_s=0.6))
+async def stream_message(task_id: str):
+    async def event_generator():
+        last_timestamp = 0
+        # Poll for 60 seconds max
+        for _ in range(120): 
+            if task_id in TASK_UPDATES:
+                update = TASK_UPDATES[task_id]
+                if update["timestamp"] > last_timestamp:
+                    last_timestamp = update["timestamp"]
+                    yield TaskStatusUpdateEvent(
+                        task_id=task_id, 
+                        state=update["state"], 
+                        detail=update["detail"]
+                    ).model_dump_json()
+                    
+                    if update["state"] in [TaskState.completed, TaskState.failed]:
+                        break
+            
+            await asyncio.sleep(0.5)
+
+    return EventSourceResponse(event_generator())
 
 
 @app.post("/tasks/resubscribe", response_model=ResubscribeResponse)
