@@ -25,7 +25,21 @@ def post_message(url: str, content: str, context_id: str, task_id: str | None = 
 def run_pipeline(prompt: str) -> dict:
     context_id = str(uuid.uuid4())
     triage = post_message(TRIAGE_URL, prompt, context_id)
-    route = "medical_research" if "research" in prompt.lower() else "presentation"
+    
+    # Fetch the actual route from triage artifacts (not naive string matching)
+    try:
+        resubscribe = httpx.post(
+            f"{TRIAGE_URL}/tasks/resubscribe",
+            json={"task_id": triage["task_id"]},
+            timeout=10
+        )
+        resubscribe.raise_for_status()
+        artifacts = resubscribe.json().get("artifacts", [])
+        route = artifacts[0].get("route", "medical_research") if artifacts else "medical_research"
+    except Exception as e:
+        print(f"Failed to get route from triage, defaulting to medical_research: {e}")
+        route = "medical_research"
+    
     if route == "medical_research":
         research = post_message(RESEARCH_URL, prompt, context_id)
         review = post_message(REVIEW_URL, research["message"]["content"], context_id)

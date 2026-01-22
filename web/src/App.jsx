@@ -102,17 +102,56 @@ export default function App() {
       presentation: "Queued"
     });
 
+    // Helper to fetch artifacts from an agent
+    const fetchArtifacts = async (serviceUrl, taskId, stageName) => {
+      try {
+        const res = await fetch(`${serviceUrl}/tasks/resubscribe`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ task_id: taskId })
+        });
+        const data = await res.json();
+        if (data.artifacts?.length) {
+          data.artifacts.forEach(artifact => {
+            if (artifact.gammaUrl) {
+              setArtifacts(prev => [...prev, { title: "Gamma Deck", detail: "Presentation Generated", url: artifact.gammaUrl }]);
+            } else if (artifact.summary) {
+              setArtifacts(prev => [...prev, { title: "Research Summary", detail: `From ${stageName}`, data: artifact }]);
+            } else if (artifact.revisedSummary) {
+              setArtifacts(prev => [...prev, { title: "Review Feedback", detail: "Content reviewed", data: artifact }]);
+            } else if (artifact.slideOutline) {
+              setArtifacts(prev => [...prev, { title: "Slide Outline", detail: "Fallback generation", data: artifact }]);
+            } else if (artifact.route) {
+              addLog(`Triage Decision`, `Routed to: ${artifact.route}`);
+            }
+          });
+        }
+        return data;
+      } catch (e) {
+        console.error(`Failed to fetch artifacts for ${stageName}:`, e);
+        return null;
+      }
+    };
+
     try {
       // 1. Triage
       updateStageStatus("triage", "Working");
       addLog("Triage Started", "Analyzing user request...");
 
-      const triageRes = await fetch(`${API_URLS.triage}/message`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: { role: "user", content: prompt } })
-      });
-      const triageData = await triageRes.json();
+      let triageData;
+      try {
+        const triageRes = await fetch(`${API_URLS.triage}/message`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: { role: "user", content: prompt } })
+        });
+        if (!triageRes.ok) throw new Error(`Triage service error: ${triageRes.status}`);
+        triageData = await triageRes.json();
+      } catch (e) {
+        updateStageStatus("triage", "Failed");
+        addLog("Triage Failed", e.message);
+        throw e; // Cannot continue without triage
+      }
 
       setTaskId(triageData.task_id);
       setContextId(triageData.context_id);
@@ -120,66 +159,105 @@ export default function App() {
       // Subscribe to Triage Stream (short lived)
       await subscribeToStream(API_URLS.triage, triageData.task_id, "triage");
 
-      const route = triageData.message.content.includes("medical_research") ? "medical_research" : "presentation";
+      // Fetch actual route from triage artifacts (not naive string matching)
+      const triageArtifacts = await fetchArtifacts(API_URLS.triage, triageData.task_id, "triage");
+      const route = triageArtifacts?.artifacts?.[0]?.route ?? "medical_research";
+      addLog("Routing Complete", `Selected route: ${route}`);
 
       if (route === "medical_research") {
         // 2. Research
         updateStageStatus("research", "Working");
-        const researchRes = await fetch(`${API_URLS.research}/message`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            context_id: triageData.context_id,
-            message: { role: "user", content: prompt }
-          })
-        });
-        const researchData = await researchRes.json();
-        await subscribeToStream(API_URLS.research, researchData.task_id, "research");
+        let researchData;
+        try {
+          const researchRes = await fetch(`${API_URLS.research}/message`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              context_id: triageData.context_id,
+              message: { role: "user", content: prompt }
+            })
+          });
+          if (!researchRes.ok) throw new Error(`Research service error: ${researchRes.status}`);
+          researchData = await researchRes.json();
+          await subscribeToStream(API_URLS.research, researchData.task_id, "research");
+          await fetchArtifacts(API_URLS.research, researchData.task_id, "research");
+        } catch (e) {
+          updateStageStatus("research", "Failed");
+          addLog("Research Failed", e.message);
+          throw e;
+        }
 
         // 3. Review
         updateStageStatus("review", "Working");
-        const reviewRes = await fetch(`${API_URLS.review}/message`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            context_id: triageData.context_id,
-            message: { role: "user", content: researchData.message.content }
-          })
-        });
-        const reviewData = await reviewRes.json();
-        await subscribeToStream(API_URLS.review, reviewData.task_id, "review");
+        let reviewData;
+        try {
+          const reviewRes = await fetch(`${API_URLS.review}/message`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              context_id: triageData.context_id,
+              message: { role: "user", content: researchData.message.content }
+            })
+          });
+          if (!reviewRes.ok) throw new Error(`Review service error: ${reviewRes.status}`);
+          reviewData = await reviewRes.json();
+          await subscribeToStream(API_URLS.review, reviewData.task_id, "review");
+          await fetchArtifacts(API_URLS.review, reviewData.task_id, "review");
+        } catch (e) {
+          updateStageStatus("review", "Failed");
+          addLog("Review Failed", e.message);
+          throw e;
+        }
 
         // 4. Presentation
         updateStageStatus("presentation", "Working");
-        const presentRes = await fetch(`${API_URLS.presentation}/message`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            context_id: triageData.context_id,
-            message: { role: "user", content: reviewData.message.content }
-          })
-        });
-        const presentData = await presentRes.json();
-        await subscribeToStream(API_URLS.presentation, presentData.task_id, "presentation");
+        try {
+          const presentRes = await fetch(`${API_URLS.presentation}/message`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              context_id: triageData.context_id,
+              message: { role: "user", content: reviewData.message.content }
+            })
+          });
+          if (!presentRes.ok) throw new Error(`Presentation service error: ${presentRes.status}`);
+          const presentData = await presentRes.json();
+          await subscribeToStream(API_URLS.presentation, presentData.task_id, "presentation");
+          await fetchArtifacts(API_URLS.presentation, presentData.task_id, "presentation");
+        } catch (e) {
+          updateStageStatus("presentation", "Failed");
+          addLog("Presentation Failed", e.message);
+          throw e;
+        }
 
       } else {
         // Direct to Presentation
+        updateStageStatus("research", "Skipped");
+        updateStageStatus("review", "Skipped");
         updateStageStatus("presentation", "Working");
-        const presentRes = await fetch(`${API_URLS.presentation}/message`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            context_id: triageData.context_id,
-            message: { role: "user", content: prompt }
-          })
-        });
-        const presentData = await presentRes.json();
-        await subscribeToStream(API_URLS.presentation, presentData.task_id, "presentation");
+        try {
+          const presentRes = await fetch(`${API_URLS.presentation}/message`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              context_id: triageData.context_id,
+              message: { role: "user", content: prompt }
+            })
+          });
+          if (!presentRes.ok) throw new Error(`Presentation service error: ${presentRes.status}`);
+          const presentData = await presentRes.json();
+          await subscribeToStream(API_URLS.presentation, presentData.task_id, "presentation");
+          await fetchArtifacts(API_URLS.presentation, presentData.task_id, "presentation");
+        } catch (e) {
+          updateStageStatus("presentation", "Failed");
+          addLog("Presentation Failed", e.message);
+          throw e;
+        }
       }
 
     } catch (e) {
       console.error(e);
-      addLog("System Error", e.message);
+      addLog("Pipeline Error", `Stopped due to: ${e.message}`);
     } finally {
       setIsRunning(false);
     }

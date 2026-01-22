@@ -27,7 +27,18 @@ app = FastAPI(title="A2A Medical Research Agent")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8001",
+        "http://localhost:8002", 
+        "http://localhost:8003",
+        "http://localhost:8004",
+        "http://127.0.0.1:8001",
+        "http://127.0.0.1:8002",
+        "http://127.0.0.1:8003",
+        "http://127.0.0.1:8004",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -72,7 +83,7 @@ def message(request: MessageRequest) -> MessageResponse:
             data = json.loads(content)
             summary_text = data.get("summary", "No summary provided.")
             artifacts = [data]
-        except:
+        except json.JSONDecodeError:
             summary_text = content
             artifacts = [{"raw": content}]
 

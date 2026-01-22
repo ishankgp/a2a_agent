@@ -27,7 +27,18 @@ app = FastAPI(title="A2A Presentation Agent")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8001",
+        "http://localhost:8002", 
+        "http://localhost:8003",
+        "http://localhost:8004",
+        "http://127.0.0.1:8001",
+        "http://127.0.0.1:8002",
+        "http://127.0.0.1:8003",
+        "http://127.0.0.1:8004",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -35,14 +46,6 @@ app.add_middleware(
 
 TASKS: Dict[str, ResubscribeResponse] = {}
 
-
-import os
-from openai import OpenAI
-from dotenv import load_dotenv
-
-load_dotenv()
-
-openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 import os
 import time
@@ -119,7 +122,7 @@ def message(request: MessageRequest) -> MessageResponse:
             try:
                 data = json.loads(content.replace("```json", "").replace("```", ""))
                 slides_preview = data
-            except:
+            except json.JSONDecodeError:
                 slides_preview = {"raw": content}
                 
             slides_url = "https://gamma.app/placeholder-outline"
