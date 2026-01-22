@@ -10,12 +10,13 @@ import {
   CardTitle
 } from "./components/ui/card";
 
-// API Configuration
+// API Configuration - use localhost to match frontend origin
+// API Configuration - Unified Backend
 const API_URLS = {
-  triage: "http://127.0.0.1:8001",
-  research: "http://127.0.0.1:8002",
-  review: "http://127.0.0.1:8003",
-  presentation: "http://127.0.0.1:8004"
+  triage: "http://localhost:8000/triage",
+  research: "http://localhost:8000/research",
+  review: "http://localhost:8000/review",
+  presentation: "http://localhost:8000/presentation"
 };
 
 export default function App() {

@@ -34,27 +34,16 @@ Write-Host "Starting backend services..." -ForegroundColor Green
 # Determine Python path
 if (Test-Path ".venv\Scripts\python.exe") {
     $pythonPath = Resolve-Path ".venv\Scripts\python.exe"
-} else {
+}
+else {
     $pythonPath = "python"
 }
 
 Write-Host "Using Python: $pythonPath" -ForegroundColor Cyan
 
-$triage = Start-Process $pythonPath -ArgumentList "-m", "uvicorn", "services.triage.app:app", "--host", "0.0.0.0", "--port", "8001", "--reload" -PassThru
-$processes += $triage
-Write-Host "  Triage service on port 8001" -ForegroundColor Cyan
-
-$research = Start-Process $pythonPath -ArgumentList "-m", "uvicorn", "services.research.app:app", "--host", "0.0.0.0", "--port", "8002", "--reload" -PassThru
-$processes += $research
-Write-Host "  Research service on port 8002" -ForegroundColor Cyan
-
-$review = Start-Process $pythonPath -ArgumentList "-m", "uvicorn", "services.review.app:app", "--host", "0.0.0.0", "--port", "8003", "--reload" -PassThru
-$processes += $review
-Write-Host "  Review service on port 8003" -ForegroundColor Cyan
-
-$presentation = Start-Process $pythonPath -ArgumentList "-m", "uvicorn", "services.presentation.app:app", "--host", "0.0.0.0", "--port", "8004", "--reload" -PassThru
-$processes += $presentation
-Write-Host "  Presentation service on port 8004" -ForegroundColor Cyan
+$unifiedBackend = Start-Process $pythonPath -ArgumentList "-m", "uvicorn", "services.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload" -PassThru
+$processes += $unifiedBackend
+Write-Host "  Unified Backend service on port 8000" -ForegroundColor Cyan
 
 # Wait for services to start
 Write-Host ""
@@ -77,7 +66,7 @@ Write-Host ""
 $separator = "=" * 60
 Write-Host $separator -ForegroundColor Gray
 Write-Host "All services are running!" -ForegroundColor Green
-Write-Host "  Backend services: http://localhost:8001-8004" -ForegroundColor White
+Write-Host "  Backend services: http://localhost:8000" -ForegroundColor White
 Write-Host "  Frontend: http://localhost:5173" -ForegroundColor White
 Write-Host ""
 Write-Host "Press Ctrl+C to stop all services" -ForegroundColor Yellow
@@ -94,7 +83,8 @@ try {
             }
         }
     }
-} catch {
+}
+catch {
     # Cleanup on exit
     Cleanup
 }

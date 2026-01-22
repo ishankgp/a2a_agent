@@ -27,19 +27,8 @@ app = FastAPI(title="A2A Medical Research Agent")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:8001",
-        "http://localhost:8002", 
-        "http://localhost:8003",
-        "http://localhost:8004",
-        "http://127.0.0.1:8001",
-        "http://127.0.0.1:8002",
-        "http://127.0.0.1:8003",
-        "http://127.0.0.1:8004",
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -88,9 +77,25 @@ def message(request: MessageRequest) -> MessageResponse:
             artifacts = [{"raw": content}]
 
     except Exception as e:
+        import traceback
+        # Log deep details
+        with open("research_debug.log", "w") as f:
+            f.write(traceback.format_exc())
+            
         print(f"Error calling Gemini: {e}")
-        summary_text = "Research failed due to API error."
-        artifacts = [{"error": str(e)}]
+        
+        # FALLBACK: Return mock data so demo continues
+        summary_text = f"**[MOCK] Research Fallback**\n\nThe AI research service is unavailable (Error: {str(e)}). Displaying a placeholder research summary regarding '{request.message.content}'.\n\nRecent advancements include CAR-T cell therapy, mRNA vaccines, and CRISPR gene editing."
+        
+        artifacts = [{
+            "summary": summary_text,
+            "keyPoints": ["Mock Point 1: AI Service Offline", "Mock Point 2: Check API Key", "Mock Point 3: Demo Mode Active"],
+            "riskFactors": ["Invalid API Key", "Network Error"],
+            "audienceTone": "system-alert"
+        }]
+        
+        # FIX: Define content for the return statement below
+        content = summary_text
 
     TASKS[task_id] = ResubscribeResponse(
         task_id=task_id,
@@ -108,11 +113,9 @@ def message(request: MessageRequest) -> MessageResponse:
 def stream_message(task_id: str):
     events = [
         TaskStatusUpdateEvent(task_id=task_id, state=TaskState.working, detail="Consulting medical database...").model_dump(),
-        TaskStatusUpdateEvent(task_id=task_id, state=TaskState.working, detail="Synthesizing findings...").model_dump(),
-        TaskArtifactUpdateEvent(task_id=task_id, artifact={"progress": "Compiling JSON report..."}).model_dump(),
         TaskStatusUpdateEvent(task_id=task_id, state=TaskState.completed).model_dump(),
     ]
-    return EventSourceResponse(simple_event_stream(events, delay_s=1.0))
+    return EventSourceResponse(simple_event_stream(events, delay_s=0.5))
 
 
 @app.post("/tasks/resubscribe", response_model=ResubscribeResponse)

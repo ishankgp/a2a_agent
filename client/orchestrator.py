@@ -5,10 +5,10 @@ import uuid
 
 import httpx
 
-TRIAGE_URL = os.getenv("TRIAGE_URL", "http://localhost:8001")
-RESEARCH_URL = os.getenv("RESEARCH_URL", "http://localhost:8002")
-REVIEW_URL = os.getenv("REVIEW_URL", "http://localhost:8003")
-PRESENTATION_URL = os.getenv("PRESENTATION_URL", "http://localhost:8004")
+TRIAGE_URL = os.getenv("TRIAGE_URL", "http://localhost:8000/triage")
+RESEARCH_URL = os.getenv("RESEARCH_URL", "http://localhost:8000/research")
+REVIEW_URL = os.getenv("REVIEW_URL", "http://localhost:8000/review")
+PRESENTATION_URL = os.getenv("PRESENTATION_URL", "http://localhost:8000/presentation")
 
 
 def post_message(url: str, content: str, context_id: str, task_id: str | None = None) -> dict:
