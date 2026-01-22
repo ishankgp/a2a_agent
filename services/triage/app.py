@@ -26,11 +26,37 @@ app = FastAPI(title="A2A Triage Agent")
 TASKS: Dict[str, ResubscribeResponse] = {}
 
 
+import os
+from openai import OpenAI
+from dotenv import load_dotenv
+
+load_dotenv()
+
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 @app.post("/message", response_model=MessageResponse)
 def message(request: MessageRequest) -> MessageResponse:
     task_id = request.task_id or str(uuid.uuid4())
     context_id = request.context_id or str(uuid.uuid4())
-    route = "medical_research" if "research" in request.message.content.lower() else "presentation"
+    
+    # Real OpenAI Routing
+    try:
+        completion = openai_client.chat.completions.create(
+            model=os.getenv("OPENAI_MODEL", "gpt-4o"),
+            messages=[
+                {"role": "system", "content": "You are a triage agent for a healthcare research system. Your job is to route user requests to the appropriate agent.\n\nRoutes:\n- 'medical_research': For questions needing medical info, disease management, or clinical data.\n- 'presentation': For requests to generate slides, decks, or presentations ONLY if the content is already provided or implied to be ready. If new research is needed for the slides, route to 'medical_research' first.\n\nOutput only the route name: 'medical_research' or 'presentation'."},
+                {"role": "user", "content": request.message.content}
+            ],
+            temperature=0.0
+        )
+        route = completion.choices[0].message.content.strip()
+        if route not in ["medical_research", "presentation"]:
+            route = "medical_research" # Default fallback
+            
+    except Exception as e:
+        print(f"Error calling OpenAI: {e}")
+        route = "medical_research"
+
     TASKS[task_id] = ResubscribeResponse(
         task_id=task_id,
         state=TaskState.completed,
@@ -44,11 +70,11 @@ def message(request: MessageRequest) -> MessageResponse:
 @app.get("/message/stream")
 def stream_message(task_id: str):
     events = [
-        TaskStatusUpdateEvent(task_id=task_id, state=TaskState.working).model_dump(),
-        TaskArtifactUpdateEvent(task_id=task_id, artifact={"note": "Triaging request"}).model_dump(),
+        TaskStatusUpdateEvent(task_id=task_id, state=TaskState.working, detail="Analyzing intent...").model_dump(),
+        TaskStatusUpdateEvent(task_id=task_id, state=TaskState.working, detail="Routing request...").model_dump(),
         TaskStatusUpdateEvent(task_id=task_id, state=TaskState.completed).model_dump(),
     ]
-    return EventSourceResponse(simple_event_stream(events))
+    return EventSourceResponse(simple_event_stream(events, delay_s=0.5))
 
 
 @app.post("/tasks/resubscribe", response_model=ResubscribeResponse)

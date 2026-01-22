@@ -1,6 +1,42 @@
-# A2A Healthcare Demo Plan (Actionable)
+# A2A Healthcare Demo
 
-This plan describes a concrete, implementation-ready path to build an Agent2Agent (A2A) demo for healthcare research and presentation generation using **OpenAI (triage + review)**, **Gemini (research)**, and **Gamma (presentation)** APIs. The **analysis agent is removed**. The focus is on a highly visible demo with **animations, real-time task updates, and UI polish**.
+An Agent2Agent (A2A) demo for healthcare research and presentation generation using **OpenAI (triage + review)**, **Gemini (research)**, and **Gamma (presentation)** APIs. The system routes requests through multiple specialized agents, streams progress updates, and produces patient-friendly presentations with a polished UI.
+
+## Status
+
+✅ **Completed:**
+- FastAPI service scaffolding (triage, research, review, presentation)
+- Agent Cards (`.well-known/agent-card.json` for each service)
+- React frontend shell with Tailwind CSS
+- Orchestrator client
+- Run scripts for Windows and Linux/Mac
+
+🚧 **In Progress:**
+- Real-time SSE streaming integration
+- API integrations (OpenAI, Gemini, Gamma)
+- UI animations and task monitoring
+
+---
+
+## Quick Start
+
+**Single command to run everything (backend + frontend):**
+
+**Windows:**
+```powershell
+.\run_all.bat
+```
+
+**Linux/Mac:**
+```bash
+./run_all.sh
+```
+
+See [Local Run](#local-run) section below for detailed setup instructions.
+
+---
+
+This plan describes a concrete, implementation-ready path to build an Agent2Agent (A2A) demo for healthcare research and presentation generation. The **analysis agent is removed**. The focus is on a highly visible demo with **animations, real-time task updates, and UI polish**.
 
 ## 1) Scope & Success Criteria
 
@@ -175,10 +211,11 @@ For each agent service, add `/.well-known/agent-card.json` with:
 ---
 
 ## 7) Deliverables Checklist
-- [ ] Client agent + 4 services
-- [ ] Agent Cards for each agent
-- [ ] UI with animations + streaming updates
-- [ ] README with local run steps
+- [x] Client agent + 4 services
+- [x] Agent Cards for each agent
+- [x] UI shell (React + Tailwind CSS)
+- [x] README with local run steps
+- [ ] UI animations + streaming updates (in progress)
 - [ ] Demo GIF/Video
 
 ---
@@ -191,37 +228,102 @@ For each agent service, add `/.well-known/agent-card.json` with:
 ---
 
 ## 9) Next Actions (Immediate)
-1. Scaffold FastAPI services.
-2. Implement Agent Cards.
-3. Build UI shell with Task Monitor + animation placeholders.
+1. ✅ Scaffold FastAPI services.
+2. ✅ Implement Agent Cards.
+3. ✅ Build UI shell with Task Monitor + animation placeholders.
 4. Wire SSE to show real-time updates.
+5. Integrate API calls (OpenAI, Gemini, Gamma).
+6. Add streaming animations and real-time task updates.
 
 ---
 
 ## 10) Notes on Compliance (Healthcare Demo)
 - Do not store PHI.
 - Use de-identified sample text.
-- Display banner: “For educational purposes only.”
+- Display banner: "For educational purposes only."
 
 ---
 
-## Local Run (Scaffold)
+## Development Notes
 
-This repo now includes scaffolded FastAPI services for triage, research, review, and presentation.
+### Git Configuration
 
-### 1) Install dependencies
+A `.gitignore` file is included to prevent committing:
+- Python bytecode (`__pycache__/`, `*.pyc`)
+- Virtual environments (`.venv/`, `venv/`)
+- Node modules (`node_modules/`)
+- IDE files (`.vscode/`, `.idea/`)
+- Environment files (`.env`)
+- OS files (`.DS_Store`, `Thumbs.db`)
+
+If files were already tracked, remove them from Git:
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+git rm -r --cached .
+git add .
+git commit -m "Update .gitignore"
 ```
 
-### 2) Run all services + orchestrator (single command)
+---
+
+## Local Run
+
+This repo includes scaffolded FastAPI services for triage, research, review, and presentation, plus a React frontend.
+
+### Quick Start (Single Command)
+
+**Windows (PowerShell):**
+```powershell
+.\run_all.bat
+```
+or
+```powershell
+& .\run_all_with_frontend.ps1
+```
+
+**Linux/Mac (Bash):**
 ```bash
 ./run_all.sh
 ```
 
-### 3) Run services (separate terminals)
+This will start all backend services (ports 8001-8004) and the frontend (port 5173).
+
+### Manual Setup
+
+#### 1) Install Python dependencies
+```bash
+python -m venv .venv
+
+# Windows
+.venv\Scripts\activate
+
+# Linux/Mac
+source .venv/bin/activate
+
+pip install -r requirements.txt
+```
+
+#### 2) Install frontend dependencies
+```bash
+cd web
+npm install
+cd ..
+```
+
+#### 3) Run all services + frontend
+
+**Windows (PowerShell):**
+```powershell
+& .\run_all_with_frontend.ps1
+```
+
+**Linux/Mac (Bash):**
+```bash
+./run_all.sh
+```
+
+#### 4) Run services individually (if needed)
+
+**Backend services:**
 ```bash
 uvicorn services.triage.app:app --port 8001 --reload
 uvicorn services.research.app:app --port 8002 --reload
@@ -229,14 +331,65 @@ uvicorn services.review.app:app --port 8003 --reload
 uvicorn services.presentation.app:app --port 8004 --reload
 ```
 
-### 4) Run orchestrator
+**Frontend:**
+```bash
+cd web
+npm run dev
+```
+
+**Orchestrator (standalone):**
 ```bash
 python client/orchestrator.py
 ```
 
-### 5) Run frontend (optional)
-```bash
-cd web
-npm install
-npm run dev
+### Access Points
+
+- **Frontend UI**: http://localhost:5173
+- **Triage Service**: http://localhost:8001
+- **Research Service**: http://localhost:8002
+- **Review Service**: http://localhost:8003
+- **Presentation Service**: http://localhost:8004
+
+### Troubleshooting
+
+**Port already in use:**
+- Stop any existing services on ports 8001-8004 or 5173
+- On Windows: `netstat -ano | findstr :8001` to find processes
+- Kill process: `taskkill /PID <pid> /F`
+
+**PowerShell script execution error:**
+- Use the batch file: `run_all.bat`
+- Or run: `powershell -ExecutionPolicy Bypass -File .\run_all_with_frontend.ps1`
+
+**Frontend not starting:**
+- Ensure Node.js is installed: `node --version`
+- Install dependencies: `cd web && npm install`
+
+**Python dependencies:**
+- Ensure Python 3.10+ is installed
+- Activate virtual environment before running services
+
+### Project Structure
+
+```
+a2a_agent/
+├── client/
+│   └── orchestrator.py          # Client orchestrator
+├── services/
+│   ├── common/                   # Shared schemas and utilities
+│   ├── triage/                   # Triage agent service
+│   ├── research/                  # Research agent service
+│   ├── review/                    # Review agent service
+│   └── presentation/              # Presentation agent service
+├── web/                           # React frontend
+│   ├── src/
+│   │   ├── App.jsx
+│   │   └── components/
+│   └── package.json
+├── run_all.sh                     # Bash script (Linux/Mac)
+├── run_all.ps1                     # PowerShell script (Windows)
+├── run_all_with_frontend.ps1      # PowerShell script with frontend
+├── run_all.bat                     # Batch file wrapper
+├── requirements.txt                # Python dependencies
+└── README.md
 ```
