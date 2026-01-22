@@ -44,6 +44,9 @@ app.add_middleware(
 # mapping: task_id -> {"state": TaskState, "detail": str, "timestamp": float}
 TASK_UPDATES: Dict[str, dict] = {}
 
+# State storage for resubscribe endpoint
+TASKS: Dict[str, ResubscribeResponse] = {}
+
 @app.post("/message", response_model=MessageResponse)
 def message(request: MessageRequest) -> MessageResponse:
     print(f"Research Agent received message: {request.message.content}")

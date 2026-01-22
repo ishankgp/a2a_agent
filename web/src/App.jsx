@@ -150,8 +150,10 @@ export default function App() {
 
         if (data.artifacts?.length) {
           data.artifacts.forEach(artifact => {
+            addDebugLog(`[FetchArtifacts] Artifact keys: ${Object.keys(artifact).join(', ')}`);
+
             if (artifact.gammaUrl) {
-              setArtifacts(prev => [...prev, { title: "Gamma Deck", detail: "Presentation Generated", url: artifact.gammaUrl }]);
+              setArtifacts(prev => [...prev, { title: "Gamma Deck", detail: "Presentation Generated", url: artifact.gammaUrl, data: artifact }]);
             } else if (artifact.summary) {
               setArtifacts(prev => [...prev, { title: "Research Summary", detail: `From ${stageName}`, data: artifact }]);
             } else if (artifact.revisedSummary) {
@@ -160,6 +162,11 @@ export default function App() {
               setArtifacts(prev => [...prev, { title: "Slide Outline", detail: "Fallback generation", data: artifact }]);
             } else if (artifact.route) {
               addLog(`Triage Decision`, `Routed to: ${artifact.route}`);
+            } else if (artifact.error) {
+              addLog(`${stageName} Error`, artifact.error);
+            } else {
+              // Catch-all for any unrecognized artifacts
+              setArtifacts(prev => [...prev, { title: `${stageName} Output`, detail: "Unknown format", data: artifact }]);
             }
           });
         }
@@ -212,6 +219,7 @@ export default function App() {
 
       // Fetch actual route from triage artifacts
       const triageArtifacts = await fetchArtifacts(API_URLS.triage, triageData.task_id, "triage");
+      updateStageStatus("triage", "Completed");
       const route = triageArtifacts?.artifacts?.[0]?.route ?? "medical_research";
       addLog("Routing Complete", `Selected route: ${route}`);
 
@@ -246,6 +254,7 @@ export default function App() {
           await streamPromise;
           addDebugLog("Research Stream Completed");
           await fetchArtifacts(API_URLS.research, researchData.task_id, "research");
+          updateStageStatus("research", "Completed");
         } catch (e) {
           updateStageStatus("research", "Failed");
           addLog("Research Failed", e.message);
@@ -276,6 +285,7 @@ export default function App() {
 
           await streamPromise;
           await fetchArtifacts(API_URLS.review, reviewData.task_id, "review");
+          updateStageStatus("review", "Completed");
         } catch (e) {
           updateStageStatus("review", "Failed");
           addLog("Review Failed", e.message);
@@ -304,6 +314,7 @@ export default function App() {
 
           await streamPromise;
           await fetchArtifacts(API_URLS.presentation, presentData.task_id, "presentation");
+          updateStageStatus("presentation", "Completed");
         } catch (e) {
           updateStageStatus("presentation", "Failed");
           addLog("Presentation Failed", e.message);

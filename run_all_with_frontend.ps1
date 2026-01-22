@@ -28,6 +28,39 @@ function Cleanup {
 [Console]::TreatControlCAsInput = $false
 $null = Register-ObjectEvent -InputObject ([System.Console]) -EventName "CancelKeyPress" -Action { Cleanup; exit }
 
+# ============================================================
+# FORCE CLEANUP: Kill any existing processes on our ports
+# ============================================================
+Write-Host ""
+Write-Host "Cleaning up existing processes..." -ForegroundColor Yellow
+
+# Kill any Python processes that might be holding ports
+$existingPython = Get-Process -Name "python" -ErrorAction SilentlyContinue
+if ($existingPython) {
+    Write-Host "  Killing existing Python processes..." -ForegroundColor Red
+    $existingPython | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 1
+}
+
+# Kill any node/npm processes from previous frontend runs
+$existingNode = Get-Process -Name "node" -ErrorAction SilentlyContinue
+if ($existingNode) {
+    Write-Host "  Killing existing Node processes..." -ForegroundColor Red
+    $existingNode | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 1
+}
+
+# Alternative: Kill by port (more targeted)
+# Uncomment if the above is too aggressive
+# $portCheck = netstat -ano | Select-String ":8000" | Select-String "LISTENING"
+# if ($portCheck) {
+#     $pid = ($portCheck -split '\s+')[-1]
+#     Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+# }
+
+Write-Host "  Cleanup complete." -ForegroundColor Green
+Write-Host ""
+
 # Start backend services
 Write-Host "Starting backend services..." -ForegroundColor Green
 

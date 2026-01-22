@@ -54,7 +54,7 @@ def message(request: MessageRequest) -> MessageResponse:
         completion = openai_client.chat.completions.create(
             model=os.getenv("OPENAI_MODEL", "gpt-4o"),
             messages=[
-                {"role": "system", "content": "You are a triage agent for a healthcare research system. Your job is to route user requests to the appropriate agent.\n\nRoutes:\n- 'medical_research': For questions needing medical info, disease management, or clinical data.\n- 'presentation': For requests to generate slides, decks, or presentations ONLY if the content is already provided or implied to be ready. If new research is needed for the slides, route to 'medical_research' first.\n\nOutput only the route name: 'medical_research' or 'presentation'."},
+                {"role": "system", "content": "You are a triage agent for a healthcare research system. Your job is to route user requests.\n\nRoutes:\n- 'medical_research': Use this for ANY request about a medical topic, disease, treatment, or health condition. This includes requests like 'create a presentation about X' or 'explain Y' - these STILL need research first.\n- 'presentation': Use this ONLY if the user provides COMPLETE, ready-to-use content and just wants it formatted as slides. This is rare.\n\nWhen in doubt, choose 'medical_research'.\n\nOutput ONLY the route name: 'medical_research' or 'presentation'."},
                 {"role": "user", "content": request.message.content}
             ],
             temperature=0.0
