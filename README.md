@@ -216,7 +216,12 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2) Run services (separate terminals)
+### 2) Run all services + orchestrator (single command)
+```bash
+./run_all.sh
+```
+
+### 3) Run services (separate terminals)
 ```bash
 uvicorn services.triage.app:app --port 8001 --reload
 uvicorn services.research.app:app --port 8002 --reload
@@ -224,7 +229,14 @@ uvicorn services.review.app:app --port 8003 --reload
 uvicorn services.presentation.app:app --port 8004 --reload
 ```
 
-### 3) Run orchestrator
+### 4) Run orchestrator
 ```bash
 python client/orchestrator.py
+```
+
+### 5) Run frontend (optional)
+```bash
+cd web
+npm install
+npm run dev
 ```

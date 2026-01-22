@@ -34,7 +34,7 @@ def message(request: MessageRequest) -> MessageResponse:
     TASKS[task_id] = ResubscribeResponse(
         task_id=task_id,
         state=TaskState.completed,
-        last_event=TaskStatusUpdateEvent(task_id=task_id, state=TaskState.completed).dict(),
+        last_event=TaskStatusUpdateEvent(task_id=task_id, state=TaskState.completed).model_dump(),
         artifacts=[{"route": route}],
     )
     response_message = Message(role="assistant", content=f"Routed to {route} agent")
@@ -44,9 +44,9 @@ def message(request: MessageRequest) -> MessageResponse:
 @app.get("/message/stream")
 def stream_message(task_id: str):
     events = [
-        TaskStatusUpdateEvent(task_id=task_id, state=TaskState.working).dict(),
-        TaskArtifactUpdateEvent(task_id=task_id, artifact={"note": "Triaging request"}).dict(),
-        TaskStatusUpdateEvent(task_id=task_id, state=TaskState.completed).dict(),
+        TaskStatusUpdateEvent(task_id=task_id, state=TaskState.working).model_dump(),
+        TaskArtifactUpdateEvent(task_id=task_id, artifact={"note": "Triaging request"}).model_dump(),
+        TaskStatusUpdateEvent(task_id=task_id, state=TaskState.completed).model_dump(),
     ]
     return EventSourceResponse(simple_event_stream(events))
 
