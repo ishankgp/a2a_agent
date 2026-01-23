@@ -69,18 +69,18 @@ def message(request: MessageRequest) -> MessageResponse:
             with httpx.Client(timeout=30.0) as client:
                 resp = client.post("https://public-api.gamma.app/v1.0/generations", json=payload, headers=headers)
                 resp.raise_for_status()
-                job_id = resp.json()["id"]
+                job_id = resp.json()["generationId"]
                 
                 # 2. Poll for Completion
                 status = "queued"
-                while status in ["queued", "processing"]:
+                while status in ["queued", "processing", "pending"]:
                     time.sleep(2.0)
                     job_resp = client.get(f"https://public-api.gamma.app/v1.0/generations/{job_id}", headers=headers)
                     if job_resp.status_code == 200:
                         job_data = job_resp.json()
                         status = job_data["status"]
                         if status == "completed":
-                            slides_url = job_data["url"]
+                            slides_url = job_data["gammaUrl"]
                             artifacts = [{"gammaUrl": slides_url}]
                             break
                         elif status == "failed":
@@ -91,10 +91,12 @@ def message(request: MessageRequest) -> MessageResponse:
                         break
 
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             print(f"Gamma Error: {e}")
             slides_url = "https://gamma.app/error"
             artifacts = [{"error": str(e)}]
-
+            
     else:
         # Fallback: Generate Slide Outline via OpenAI
         try:

@@ -155,3 +155,18 @@ Thumbs.db
 *.db
 *.sqlite
 *.sqlite3
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Build outputs
+dist/
+out/
+build/
+
+# Test results
+test_result.txt

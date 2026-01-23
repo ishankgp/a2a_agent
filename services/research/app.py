@@ -66,13 +66,13 @@ def message(request: MessageRequest) -> MessageResponse:
     
     # Real OpenAI Research
     try:
-        update_state(TaskState.working, "Consulting OpenAI GPT-4o...")
+        update_state(TaskState.working, "Consulting OpenAI GPT-5.2 (300-word summary)...")
         
         system_prompt = """
-        You are a medical research assistant. Research the following query and provide a structured summary.
+        You are a medical research assistant. Research the following query and provide a comprehensive, detailed structured summary.
         Output valid JSON with the following keys:
-        - summary: A detailed medical summary (approx 100 words).
-        - keyPoints: A list of 3-5 key takeaways.
+        - summary: A comprehensive medical summary (approximately 300 words). Provide detailed, educational content.
+        - keyPoints: A list of 5-7 key takeaways.
         - riskFactors: A list of risk factors.
         - audienceTone: The detected tone (e.g., 'clinical', 'patient-friendly').
         """
